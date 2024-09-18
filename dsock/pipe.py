@@ -14,9 +14,14 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
+import os
+import io
 import asyncio
 import logging
 from typing import Self, Callable
+from contextlib import contextmanager
+
+type BufferHandle = tuple[io.FileIO, str]
 
 
 class Frame(object):
@@ -69,14 +74,15 @@ class Pipe(object):
     WCB_NULL: bytes = b'\x00'
     WCB_DATA: bytes = b'\x01'
 
-    def __init__(self, path: str, server: bool = False) -> None:
+    def __init__(self, path: str, server: bool = False, reuse_handles: bool = True) -> None:
         """
         A file-based pipe for remote communication.
         """
-        self._read_path = path + '.1' if server else path + '.2'
-        self._write_path = path + '.2' if server else path + '.1'
+        self.reader: BufferHandle = self.allocate(path + '.1' if server else path + '.2')
+        self.writer: BufferHandle = self.allocate(path + '.2' if server else path + '.1')
+        self._reuse_handles = reuse_handles
 
-    def allocate(self) -> None:
+    def allocate(self, path: str) -> BufferHandle:
         """
         Allocates the pipe's buffer files.
         """
@@ -85,8 +91,41 @@ class Pipe(object):
                 f.write(b'\x00' * self.FILE_SIZE)
             logging.info(f'pipe: allocated {self.FILE_SIZE} bytes to {path}')
 
-        _allocate(self._read_path)
-        _allocate(self._write_path)
+        if not os.path.exists(path):
+            _allocate(path)
+
+        return (open(path, 'r+b', buffering=0), path)
+
+    @contextmanager
+    def open_reader(self) -> io.FileIO:
+        """
+        Opens a handle to the read buffer.
+        """
+        f, path = self.reader
+
+        if self._reuse_handles:
+            f.seek(0)
+            yield f
+        else:
+            f.close()
+            self.reader = self.allocate(path)
+            yield self.reader[0]
+
+    @contextmanager
+    def open_writer(self) -> io.FileIO:
+        """
+        Opens a handle to the write buffer.
+        """
+        f, path = self.writer
+
+        if self._reuse_handles:
+            f.seek(0)
+            yield f
+        else:
+            f.close()
+            self.writer = self.allocate(path)
+            yield self.writer[0]
+            self.writer[0].flush()
 
     async def read(self, min_size: int = 0) -> bytes:
         """
@@ -96,10 +135,7 @@ class Pipe(object):
             raise ValueError('Minimum size exceeds buffer size')
 
         while True:
-            # Open a new handle instead of seeking. The underlying file
-            # handle isn't guaranteed to be the same when writing from
-            # Windows over a remote desktop session.
-            with open(self._read_path, 'rb', buffering=0) as f:
+            with self.open_reader() as f:
                 wcb = f.read(1)
                 if wcb == self.WCB_NULL:
                     return b''
@@ -110,7 +146,7 @@ class Pipe(object):
                     continue
 
             if len(frame) > 0:
-                logging.debug(f'pipe: read {len(frame)} bytes from {self._read_path}')
+                logging.debug(f'pipe: read {len(frame)} bytes from {self.reader[1]}')
 
             await self._truncate()
             return frame.data
@@ -119,7 +155,7 @@ class Pipe(object):
         """
         Sets the write control byte to NULL, effectively emptying the buffer.
         """
-        with open(self._read_path, 'r+b', buffering=0) as f:
+        with self.open_reader() as f:
             f.write(b'\x00' * 5)
 
     async def _wait_write(self) -> None:
@@ -130,7 +166,7 @@ class Pipe(object):
         while True:
             await asyncio.sleep(self.POLL_FREQ)
 
-            with open(self._write_path, 'rb', buffering=0) as f:
+            with self.open_writer() as f:
                 wcb = f.read(1)
                 if wcb == self.WCB_NULL:
                     return
@@ -144,10 +180,10 @@ class Pipe(object):
 
         await self._wait_write()
 
-        with open(self._write_path, 'r+b', buffering=0) as f:
+        with self.open_writer() as f:
             f.write(self.WCB_NULL + Frame(data).encode())
             f.flush()
             f.seek(0)
             f.write(self.WCB_DATA)
 
-        logging.debug(f'pipe: wrote {len(data)} bytes to {self._write_path}')
+        logging.debug(f'pipe: wrote {len(data)} bytes to {self.writer[1]}')

@@ -21,6 +21,7 @@ from dsock.pipe import Pipe
 from dsock.socket import PipeSocket, SocketChannel
 
 buffer_size = Pipe.BUFFER_SIZE
+reuse_handles = True
 
 
 async def channel_open(channel: SocketChannel) -> None:
@@ -115,11 +116,7 @@ def create_pipe_socket(path: str, server: bool = False) -> PipeSocket:
     """
     Creates a new pipe socket.
     """
-    pipe = Pipe(path, server=server)
-    if server:
-        pipe.allocate()
-
-    psocket = PipeSocket(pipe)
+    psocket = PipeSocket(Pipe(path, server=server, reuse_handles=reuse_handles))
     psocket.on_remote_open = lambda x: channel_open(SocketChannel(psocket, x))
     psocket.on_remote_close = lambda x: channel_close(SocketChannel(psocket, x))
 
