@@ -246,7 +246,7 @@ class PipeSocket(object):
             elif packet.is_refused:
                 await self._cancel_refused_channel(packet)
             elif packet.is_setup:
-                self._queue.append(self._transport.channel_setup(packet))
+                self._queue.append(await self._transport.channel_setup(packet))
             elif packet.is_reset:
                 self._queue.append(self._transport.channel_reset(packet))
             elif not self._transport.channel_exists(packet):

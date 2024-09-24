@@ -24,6 +24,20 @@ buffer_size = Pipe.BUFFER_SIZE
 reuse_handles = True
 
 
+async def channel_wait(channel: SocketChannel, reader: asyncio.StreamReader,
+                       writer: asyncio.StreamWriter) -> None:
+    """
+    Closes the channel when the reader is at EOF.
+    """
+    while not reader.at_eof():
+        await asyncio.sleep(0.1)
+
+    await channel.close()
+    writer.close()
+    await writer.wait_closed()
+    logging.info(f'server: channel {channel.number} closed')
+
+
 async def channel_open(channel: SocketChannel) -> None:
     """
     Callback invoked when a remote channel is opened.
@@ -38,14 +52,7 @@ async def channel_open(channel: SocketChannel) -> None:
     logging.info(f'server: connection established to {channel.address}:{channel.port}')
     channel.on_data_received = lambda x: channel_data_received(x, writer)
     asyncio.ensure_future(connection_data_loop(reader, channel))
-
-    while not reader.at_eof():
-        await asyncio.sleep(0.1)
-
-    await channel.close()
-    writer.close()
-    await writer.wait_closed()
-    logging.info(f'server: channel {channel.number} closed')
+    asyncio.ensure_future(channel_wait(channel, reader, writer))
 
 
 async def channel_close(channel: SocketChannel) -> None:

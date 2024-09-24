@@ -448,7 +448,7 @@ class PacketProtocol(object):
         self._channels[channel.number] = channel
         return Packet(channel, segment)
 
-    def channel_setup(self, packet: Packet) -> Packet:
+    async def channel_setup(self, packet: Packet) -> Packet:
         """
         Acknowledges the setup packet and marks the channel as open.
         """
@@ -464,7 +464,7 @@ class PacketProtocol(object):
         channel.sequence = header.sequence
         header.flags.ack = True
 
-        asyncio.ensure_future(self.on_remote_open(channel))
+        await self.on_remote_open(channel)
         return Packet(channel, packet.segment)
 
     def channel_reset(self, packet: Packet) -> Packet:
