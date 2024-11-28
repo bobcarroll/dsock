@@ -19,7 +19,7 @@ import logging
 from typing import Iterator, Callable
 
 from .pipe import Pipe
-from .transport import PacketProtocol, Packet, Channel, ChannelEventCallback
+from .transport import PacketProtocol, Packet, Channel, ChannelEventCallback, nop
 
 
 class TransmitQueue(object):
@@ -102,34 +102,8 @@ class PipeSocket(object):
         self._recv_loop_task: asyncio.Task = None
         self._send_loop_task: asyncio.Task = None
         self._queue = TransmitQueue()
-
-    @property
-    def on_remote_open(self) -> ChannelEventCallback:
-        """
-        A callback that is invoked when a remote channel is opened.
-        """
-        return self._protocol.on_remote_open
-
-    @on_remote_open.setter
-    def on_remote_open(self, callback: ChannelEventCallback) -> None:
-        """
-        Sets the callback that is invoked when a remote channel is opened.
-        """
-        self._protocol.on_remote_open = callback
-
-    @property
-    def on_remote_close(self) -> ChannelEventCallback:
-        """
-        A callback that is invoked when a remote channel is closed.
-        """
-        return self._protocol.on_remote_close
-
-    @on_remote_close.setter
-    def on_remote_close(self, callback: ChannelEventCallback) -> None:
-        """
-        Sets the callback that is invoked when a remote channel is closed.
-        """
-        self._protocol.on_remote_close = callback
+        self.on_remote_open: ChannelEventCallback = nop
+        self.on_remote_close: ChannelEventCallback = nop
 
     async def start(self) -> None:
         """
@@ -148,7 +122,7 @@ class PipeSocket(object):
         channel = Channel(self._protocol.allocate_channel(), addr, port)
         logging.debug(f'socket: opening channel {channel.number} to '
                       f'{channel.address}:{channel.port}')
-        packet = await self._protocol.open_channel(channel)
+        packet = self._protocol.open_channel(channel)
 
         async with self._queue.lock():
             self._queue.append(packet)
@@ -172,7 +146,7 @@ class PipeSocket(object):
             return
 
         channel.state = Channel.STATE_CLOSING
-        packet = await self._protocol.close_channel(channel)
+        packet = self._protocol.close_channel(channel)
         channel.ready.clear()
 
         async with self._queue.lock():
@@ -225,6 +199,29 @@ class PipeSocket(object):
         packet.channel.state = Channel.STATE_CLOSED
         packet.channel.ready.set()
 
+    async def _on_remote_open(self, syn: Packet) -> Packet:
+        """
+        Handles a channel open event from the remote peer.
+        """
+        ack = self._protocol.channel_setup(syn)
+        await self.on_remote_open(ack.channel)
+        return ack
+
+    def _on_remote_close(self, rst: Packet) -> Packet:
+        """
+        Handles a channel close event from the remote peer.
+        """
+        ack = self._protocol.channel_reset(rst)
+        asyncio.ensure_future(self.on_remote_close(ack.channel))
+        return ack
+
+    def _on_data_received(self, packet: Packet) -> None:
+        """
+        Handles a data received event from the remote peer.
+        """
+        data = self._protocol.unpack(packet)
+        asyncio.ensure_future(packet.channel.on_data_received(data))
+
     async def _recv_loop(self) -> None:
         """
         Continuously receives packets from the pipe.
@@ -246,13 +243,13 @@ class PipeSocket(object):
             elif packet.is_refused:
                 await self._cancel_refused_channel(packet)
             elif packet.is_setup:
-                self._queue.append(await self._protocol.channel_setup(packet))
+                self._queue.append(await self._on_remote_open(packet))
             elif packet.is_reset:
-                self._queue.append(self._protocol.channel_reset(packet))
+                self._queue.append(self._on_remote_close(packet))
             elif not self._protocol.channel_exists(packet):
                 logging.warn('socket: dropped packet on unknown channel')
             elif packet.is_data:
-                await self._protocol.unpack(packet)
+                self._on_data_received(packet)
             else:
                 logging.warning(f'socket: unknown packet type: {packet}')
 

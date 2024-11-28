@@ -387,8 +387,6 @@ class PacketProtocol(object):
         """
         self._packet_size = packet_size
         self._channels: list[Channel] = {}
-        self.on_remote_open: ChannelEventCallback = nop
-        self.on_remote_close: ChannelEventCallback = nop
 
     @property
     def packet_size(self) -> int:
@@ -420,7 +418,7 @@ class PacketProtocol(object):
             logging.debug(f'protocol: deallocated channel {channel.number}, '
                           f'count={len(self._channels)}')
 
-    async def close_channel(self, channel: Channel) -> Packet:
+    def close_channel(self, channel: Channel) -> Packet:
         """
         Closes the channel and prepares a reset packet.
         """
@@ -430,7 +428,7 @@ class PacketProtocol(object):
         segment.header.flags.rst = True
         return Packet(channel, segment)
 
-    async def open_channel(self, channel: Channel) -> Packet:
+    def open_channel(self, channel: Channel) -> Packet:
         """
         Opens a new channel and prepares a setup packet.
         """
@@ -448,7 +446,7 @@ class PacketProtocol(object):
         self._channels[channel.number] = channel
         return Packet(channel, segment)
 
-    async def channel_setup(self, packet: Packet) -> Packet:
+    def channel_setup(self, packet: Packet) -> Packet:
         """
         Acknowledges the setup packet and marks the channel as open.
         """
@@ -464,7 +462,6 @@ class PacketProtocol(object):
         channel.sequence = header.sequence
         header.flags.ack = True
 
-        await self.on_remote_open(channel)
         return Packet(channel, packet.segment)
 
     def channel_reset(self, packet: Packet) -> Packet:
@@ -479,7 +476,6 @@ class PacketProtocol(object):
             packet.channel.sequence = packet.segment.header.sequence
             packet.channel.ready.set()
 
-            asyncio.ensure_future(self.on_remote_close(packet.channel))
             self.free_channel(packet.channel)
 
         return packet
@@ -526,7 +522,7 @@ class PacketProtocol(object):
 
         return Packet(self._channels.get(segment.header.channel), segment)
 
-    async def unpack(self, packet: Packet) -> None:
+    def unpack(self, packet: Packet) -> bytes:
         """
         Unpacks the data segment and forwards it to the channel.
         """
@@ -535,7 +531,7 @@ class PacketProtocol(object):
 
         channel = packet.channel
         channel.sequence = header.sequence
-        asyncio.ensure_future(channel.on_data_received(packet.segment.data))
+        return packet.segment.data
 
     def _chunk(self, data: bytes) -> tuple[list[bytes], bool]:
         """
