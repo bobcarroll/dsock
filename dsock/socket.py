@@ -90,15 +90,15 @@ class PipeSocket(object):
     SEND_LOOP_FREQ: float = 0.005
     RECV_LOOP_FREQ: float = 0.001
 
-    PROTOCOL_TCP: int = 0
-    PROTOCOL_UDP: int = 1
+    TRANSPORT_TCP: int = 0
+    TRANSPORT_UDP: int = 1
 
     def __init__(self, pipe: Pipe) -> None:
         """
         A socket-like interface for sending and receiving data over a pipe.
         """
         self._pipe = pipe
-        self._transport = PacketProtocol(packet_size=Pipe.BUFFER_SIZE)
+        self._protocol = PacketProtocol(packet_size=Pipe.BUFFER_SIZE)
         self._recv_loop_task: asyncio.Task = None
         self._send_loop_task: asyncio.Task = None
         self._queue = TransmitQueue()
@@ -108,28 +108,28 @@ class PipeSocket(object):
         """
         A callback that is invoked when a remote channel is opened.
         """
-        return self._transport.on_remote_open
+        return self._protocol.on_remote_open
 
     @on_remote_open.setter
     def on_remote_open(self, callback: ChannelEventCallback) -> None:
         """
         Sets the callback that is invoked when a remote channel is opened.
         """
-        self._transport.on_remote_open = callback
+        self._protocol.on_remote_open = callback
 
     @property
     def on_remote_close(self) -> ChannelEventCallback:
         """
         A callback that is invoked when a remote channel is closed.
         """
-        return self._transport.on_remote_close
+        return self._protocol.on_remote_close
 
     @on_remote_close.setter
     def on_remote_close(self, callback: ChannelEventCallback) -> None:
         """
         Sets the callback that is invoked when a remote channel is closed.
         """
-        self._transport.on_remote_close = callback
+        self._protocol.on_remote_close = callback
 
     async def start(self) -> None:
         """
@@ -138,17 +138,17 @@ class PipeSocket(object):
         self._recv_loop_task = asyncio.create_task(self._recv_loop())
         self._send_loop_task = asyncio.create_task(self._send_loop())
 
-    async def open_channel(self, addr: str, port: int, protocol: int = PROTOCOL_TCP) -> Channel:
+    async def open_channel(self, addr: str, port: int, transport: int = TRANSPORT_TCP) -> Channel:
         """
         Opens a channel to the specified address and port.
         """
-        if protocol == PipeSocket.PROTOCOL_UDP:
+        if transport == PipeSocket.TRANSPORT_UDP:
             raise NotImplementedError('Datagram channels are not supported')
 
-        channel = Channel(self._transport.allocate_channel(), addr, port)
+        channel = Channel(self._protocol.allocate_channel(), addr, port)
         logging.debug(f'socket: opening channel {channel.number} to '
                       f'{channel.address}:{channel.port}')
-        packet = await self._transport.open_channel(channel)
+        packet = await self._protocol.open_channel(channel)
 
         async with self._queue.lock():
             self._queue.append(packet)
@@ -172,7 +172,7 @@ class PipeSocket(object):
             return
 
         channel.state = Channel.STATE_CLOSING
-        packet = await self._transport.close_channel(channel)
+        packet = await self._protocol.close_channel(channel)
         channel.ready.clear()
 
         async with self._queue.lock():
@@ -185,7 +185,7 @@ class PipeSocket(object):
 
         channel.state = Channel.STATE_CLOSED
         logging.debug(f'socket: channel {channel.number} closed')
-        self._transport.free_channel(channel)
+        self._protocol.free_channel(channel)
 
     async def send(self, channel: Channel, data: bytes) -> None:
         """
@@ -195,7 +195,7 @@ class PipeSocket(object):
             raise ConnectionError(f'Channel {channel.number} is not open')
 
         async with self._queue.lock():
-            for packet in self._transport.pack(channel, data):
+            for packet in self._protocol.pack(channel, data):
                 self._queue.append(packet)
 
     async def _send_loop(self) -> None:
@@ -212,7 +212,7 @@ class PipeSocket(object):
 
             if packet and not packet.sent:
                 logging.debug(f'socket: dequeuing packet for transmission: {packet}')
-                await self._transport.send(self._pipe.write, packet)
+                await self._protocol.send(self._pipe.write, packet)
 
                 async with self._queue.lock():
                     self._queue.pop()
@@ -234,7 +234,7 @@ class PipeSocket(object):
         while not self._recv_loop_task.cancelled():
             await asyncio.sleep(self.RECV_LOOP_FREQ)
 
-            packet = await self._transport.recv(self._pipe.read)
+            packet = await self._protocol.recv(self._pipe.read)
             if packet is None:
                 continue
 
@@ -246,13 +246,13 @@ class PipeSocket(object):
             elif packet.is_refused:
                 await self._cancel_refused_channel(packet)
             elif packet.is_setup:
-                self._queue.append(await self._transport.channel_setup(packet))
+                self._queue.append(await self._protocol.channel_setup(packet))
             elif packet.is_reset:
-                self._queue.append(self._transport.channel_reset(packet))
-            elif not self._transport.channel_exists(packet):
+                self._queue.append(self._protocol.channel_reset(packet))
+            elif not self._protocol.channel_exists(packet):
                 logging.warn('socket: dropped packet on unknown channel')
             elif packet.is_data:
-                await self._transport.unpack(packet)
+                await self._protocol.unpack(packet)
             else:
                 logging.warning(f'socket: unknown packet type: {packet}')
 
