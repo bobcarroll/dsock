@@ -14,10 +14,11 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
-import asyncio
 import logging
 from ipaddress import ip_address, IPv4Address, IPv6Address
 from typing import Self, Iterator, Callable
+
+from .channel import Channel
 
 
 class Flags(object):
@@ -198,94 +199,6 @@ class Segment(object):
                 f'rst={int(self.header.flags.rst)} ack={int(self.header.flags.ack)}>')
 
 
-async def nop(*args, **kwargs) -> None:
-    """
-    No operation coroutine.
-    """
-    pass
-
-
-type DataReceivedCallback = Callable[[bytes], None]
-
-
-class Channel(object):
-
-    STATE_OPENING: int = 0
-    STATE_OPEN: int = 1
-    STATE_CLOSING: int = 2
-    STATE_CLOSED: int = 3
-
-    def __init__(self, number: int, addr: str, port: int) -> None:
-        """
-        Bi-directional communication channel between two endpoints.
-        """
-        self._number = number
-        self._addr = addr
-        self._port = port
-        self._ready = asyncio.Event()
-        self.sequence: int = 0
-        self.state = self.STATE_OPENING
-        self.on_data_received: DataReceivedCallback = nop
-
-    @property
-    def number(self) -> int:
-        """
-        Returns the channel number.
-        """
-        return self._number
-
-    @property
-    def address(self) -> str:
-        """
-        Returns the remote IP address. This is only used when opening a channel.
-        """
-        return self._addr
-
-    @property
-    def port(self) -> int:
-        """
-        Returns the remote IP port. This is only used when opening a channel.
-        """
-        return self._port
-
-    @property
-    def ready(self) -> asyncio.Event:
-        """
-        Returns the channel ready event.
-        """
-        return self._ready
-
-    @property
-    def is_segment(self) -> bool:
-        """
-        Returns whether the channel is a segment.
-        """
-        # datagram channels are not supported yet
-        return True
-
-    @property
-    def is_datagram(self) -> bool:
-        """
-        Returns whether the channel is a datagram.
-        """
-        # datagram channels are not supported yet
-        return False
-
-    @property
-    def is_open(self) -> bool:
-        """
-        Returns whether the channel is open.
-        """
-        return self.state == self.STATE_OPEN
-
-    def next_sequence(self) -> int:
-        """
-        Returns the next segment sequence number.
-        """
-        self.sequence = self.sequence + 1 if self.sequence < 65536 else 0
-        return self.sequence
-
-
 class Packet(object):
 
     def __init__(self, channel: Channel, segment: Segment) -> None:
@@ -371,9 +284,6 @@ class Packet(object):
                     self.segment.header.sequence == other.segment.header.sequence)
         else:
             return False
-
-
-type ChannelEventCallback = Callable[[Channel], None]
 
 
 class PacketProtocol(object):

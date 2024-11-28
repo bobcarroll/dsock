@@ -19,7 +19,8 @@ import logging
 from typing import Iterator, Callable
 
 from .pipe import Pipe
-from .transport import PacketProtocol, Packet, Channel, ChannelEventCallback, nop
+from .transport import PacketProtocol, Packet
+from .channel import Channel, ChannelEventCallback, nop
 
 
 class TransmitQueue(object):
