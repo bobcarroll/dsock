@@ -79,7 +79,7 @@ async def connection_data_loop(reader: asyncio.StreamReader, channel: SocketChan
     while channel.is_open:
         try:
             data = await reader.read(buffer_size)
-        except BrokenPipeError:
+        except (BrokenPipeError, ConnectionError):
             break
 
         try:
@@ -114,8 +114,12 @@ async def connection_accepted(reader: asyncio.StreamReader, writer: asyncio.Stre
 
     await psocket.close_channel(channel)
 
-    writer.close()
-    await writer.wait_closed()
+    try:
+        writer.close()
+        await writer.wait_closed()
+    except ConnectionError:
+        pass
+
     logging.info(f'server: connection closed from {writer.get_extra_info("peername")}')
 
 
