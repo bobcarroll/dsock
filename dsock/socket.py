@@ -184,11 +184,9 @@ class PipeSocket(object):
             async with self._queue.lock():
                 packet = self._queue.peek()
 
-            if packet and not packet.sent:
-                logging.debug(f'socket: dequeuing packet for transmission: {packet}')
-                await self._protocol.send(self._pipe.write, packet)
-
-                async with self._queue.lock():
+                if packet:
+                    logging.debug(f'socket: dequeuing packet for transmission: {packet}')
+                    await self._protocol.send(self._pipe.write, packet)
                     self._queue.pop()
 
     async def _cancel_refused_channel(self, packet: Packet) -> None:
