@@ -19,7 +19,7 @@ import logging
 from typing import Iterator, Callable
 
 from .pipe import Pipe
-from .transport import PacketProtocol, Packet
+from .protocol import PacketProtocol, Packet
 from .channel import Channel, ChannelEventCallback, nop
 
 
