@@ -158,10 +158,11 @@ class PacketProtocol(object):
         segment = Segment()
         segment.header.channel = channel.number
         segment.header.sequence = channel.next_sequence()
+        segment.header.flags.dgm = channel.is_datagram
         segment.header.flags.rst = True
         return Packet(channel, segment)
 
-    def open_channel(self, channel: Channel) -> Packet:
+    def open_channel(self, channel: Channel, datagram: bool = False) -> Packet:
         """
         Opens a new channel and prepares a setup packet.
         """
@@ -174,6 +175,7 @@ class PacketProtocol(object):
         segment.header.port = channel.port
         segment.header.sequence = channel.next_sequence()
         segment.header.flags.ip6 = segment.header.address.version == 6
+        segment.header.flags.dgm = datagram
         segment.header.flags.syn = True
 
         self._channels[channel.number] = channel
@@ -185,7 +187,8 @@ class PacketProtocol(object):
         """
         header = packet.segment.header
 
-        channel = Channel(header.channel, header.address.compressed, header.port)
+        channel = Channel(header.channel, header.address.compressed, header.port,
+                          datagram=header.flags.dgm)
         self._channels[channel.number] = channel
 
         logging.debug(f'protocol: ack channel {channel.number} open to '
@@ -284,5 +287,6 @@ class PacketProtocol(object):
             segment.header.data_length = len(chunk)
             segment.header.channel = channel.number
             segment.header.sequence = channel.next_sequence()
+            segment.header.flags.dgm = channel.is_datagram
             segment.header.flags.fin = final
             yield Packet(channel, segment)

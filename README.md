@@ -15,8 +15,8 @@ As an example scenario, connecting to machine A's port 8080 will reach machine B
 
 ```python
 config = {
-    'a': {'pipes': [], 'sockets': [('127.0.0.1', 8080, '127.0.0.1', 80, '/mnt/share/web.sock')]},
-    'b': {'pipes': ['/mnt/share/web.sock'], 'sockets': []}}
+    'a': {'pipes': [], 'tcp-sockets': [('127.0.0.1', 8080, '127.0.0.1', 80, '/mnt/share/web.sock')]},
+    'b': {'pipes': ['/mnt/share/web.sock'], 'tcp-sockets': []}}
 ```
 
 Then start the server on A:

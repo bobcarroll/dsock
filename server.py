@@ -11,11 +11,11 @@ config = {
         'pipes': ['C:\\Users\\bob\\web.sock'],
         # client side of the pipe socket
         # local address, local port, remote address, remote port, pipe path
-        'sockets': [
+        'tcp-sockets': [
             ('127.0.0.1', 1433, '127.0.0.1', 1433, 'C:\\Users\\bob\\mssql.sock')]},
     'vm': {
         'pipes': ['/mnt/win/home/mssql.sock'],
-        'sockets': [
+        'tcp-sockets': [
             ('127.0.0.1', 9000, '127.0.0.1', 80, '/mnt/win/home/web.sock')]}}
 
 
@@ -29,8 +29,11 @@ async def main(key: str) -> None:
     for pipe in config.get(key, {}).get('pipes', []):
         tasks.append(asyncio.create_task(dsock.start_pipe_server(pipe)))
 
-    for item in config.get(key, {}).get('sockets', []):
-        tasks.append(asyncio.create_task(dsock.start_listener(*item)))
+    for item in config.get(key, {}).get('tcp-sockets', []):
+        tasks.append(asyncio.create_task(dsock.start_stream_listener(*item)))
+
+    for item in config.get(key, {}).get('udp-sockets', []):
+        tasks.append(asyncio.create_task(dsock.start_datagram_listener(*item)))
 
     await asyncio.gather(*tasks)
 

@@ -117,13 +117,10 @@ class PipeSocket(object):
         """
         Opens a channel to the specified address and port.
         """
-        if transport == PipeSocket.TRANSPORT_UDP:
-            raise NotImplementedError('Datagram channels are not supported')
-
         channel = Channel(self._protocol.allocate_channel(), addr, port)
         logging.debug(f'socket: opening channel {channel.number} to '
                       f'{channel.address}:{channel.port}')
-        packet = self._protocol.open_channel(channel)
+        packet = self._protocol.open_channel(channel, transport == PipeSocket.TRANSPORT_UDP)
 
         async with self._queue.lock():
             self._queue.append(packet)
@@ -303,6 +300,13 @@ class SocketChannel(object):
         Returns whether the channel is open.
         """
         return self._channel.is_open
+
+    @property
+    def is_datagram(self) -> bool:
+        """
+        Returns whether the channel handles datagram packets.
+        """
+        return self._channel.is_datagram
 
     async def send(self, data: bytes) -> None:
         """

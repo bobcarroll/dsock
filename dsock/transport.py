@@ -26,6 +26,8 @@ class Flags(object):
         """
         # segment contains an acknowledgement
         self.ack: bool = False
+        # segment is a datagram
+        self.dgm: bool = False
         # segment contains the last chunk in the payload
         self.fin: bool = False
         # segment contains an IPv6 address
@@ -40,6 +42,7 @@ class Flags(object):
         Encodes the flags into a single byte.
         """
         buf = 0
+        buf |= self.dgm << 5
         buf |= self.ack << 4
         buf |= self.rst << 3
         buf |= self.fin << 2
@@ -52,6 +55,7 @@ class Flags(object):
         Decodes the flags from a single byte.
         """
         flags = int.from_bytes(buf)
+        self.dgm = bool(flags & 0b00100000)
         self.ack = bool(flags & 0b00010000)
         self.rst = bool(flags & 0b00001000)
         self.fin = bool(flags & 0b00000100)
@@ -193,4 +197,5 @@ class Segment(object):
         """
         return (f'<Segment channel={self.header.channel} seq={self.header.sequence} '
                 f'syn={int(self.header.flags.syn)} fin={int(self.header.flags.fin)} '
-                f'rst={int(self.header.flags.rst)} ack={int(self.header.flags.ack)}>')
+                f'rst={int(self.header.flags.rst)} ack={int(self.header.flags.ack)} '
+                f'dgm={int(self.header.flags.dgm)}>')

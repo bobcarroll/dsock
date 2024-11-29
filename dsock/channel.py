@@ -35,7 +35,7 @@ class Channel(object):
     STATE_CLOSING: int = 2
     STATE_CLOSED: int = 3
 
-    def __init__(self, number: int, addr: str, port: int) -> None:
+    def __init__(self, number: int, addr: str, port: int, datagram: bool = False) -> None:
         """
         Bi-directional communication channel between two endpoints.
         """
@@ -43,6 +43,7 @@ class Channel(object):
         self._addr = addr
         self._port = port
         self._ready = asyncio.Event()
+        self._datagram = datagram
         self.sequence: int = 0
         self.state = self.STATE_OPENING
         self.on_data_received: DataReceivedCallback = nop
@@ -76,20 +77,11 @@ class Channel(object):
         return self._ready
 
     @property
-    def is_segment(self) -> bool:
-        """
-        Returns whether the channel is a segment.
-        """
-        # datagram channels are not supported yet
-        return True
-
-    @property
     def is_datagram(self) -> bool:
         """
-        Returns whether the channel is a datagram.
+        Returns whether the channel handles datagram packets.
         """
-        # datagram channels are not supported yet
-        return False
+        return self._datagram
 
     @property
     def is_open(self) -> bool:
