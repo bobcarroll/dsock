@@ -233,10 +233,7 @@ class PipeSocket(object):
 
             logging.debug(f'socket: received packet: {packet}')
 
-            if packet.is_ack and (packet.is_setup or packet.is_reset):
-                if packet.channel:
-                    packet.channel.ready.set()
-            elif packet.is_refused:
+            if packet.is_refused:
                 await self._cancel_refused_channel(packet)
             elif packet.is_setup:
                 self._queue.append(await self._on_remote_open(packet))

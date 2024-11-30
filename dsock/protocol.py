@@ -47,13 +47,6 @@ class Packet(object):
         return self._segment
 
     @property
-    def is_ack(self) -> bool:
-        """
-        Returns whether the packet contains an acknowledgement segment.
-        """
-        return self.segment.header.flags.ack
-
-    @property
     def is_setup(self) -> bool:
         """
         Returns whether the packet contains a channel setup segment.
@@ -196,6 +189,7 @@ class PacketProtocol(object):
 
         channel.state = Channel.STATE_OPEN
         channel.sequence = header.sequence
+        header.sequence = channel.next_sequence()
         header.flags.ack = True
 
         return Packet(channel, packet.segment)
@@ -210,6 +204,7 @@ class PacketProtocol(object):
         if self.channel_exists(packet):
             packet.channel.state = Channel.STATE_CLOSED
             packet.channel.sequence = packet.segment.header.sequence
+            packet.segment.header.sequence = packet.channel.next_sequence()
             packet.channel.ready.set()
 
             self.free_channel(packet.channel)
@@ -256,7 +251,14 @@ class PacketProtocol(object):
             logging.warn('protocol: dropping segment on channel 0')
             return None
 
-        return Packet(self._channels.get(segment.header.channel), segment)
+        channel = self._channels.get(segment.header.channel)
+
+        if channel and segment.header.flags.ack:
+            channel.sequence = segment.header.sequence
+            channel.ready.set()
+            return None
+
+        return Packet(channel, segment)
 
     def unpack(self, packet: Packet) -> bytes:
         """
