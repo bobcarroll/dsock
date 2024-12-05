@@ -200,7 +200,13 @@ class PipeSocket(object):
         Handles a channel open event from the remote peer.
         """
         ack = self._protocol.channel_setup(syn)
-        await self.on_remote_open(ack.channel)
+
+        try:
+            await self.on_remote_open(ack.channel)
+            ack.channel.state = Channel.STATE_OPEN
+        except Exception:
+            ack = self._protocol.channel_refused(ack)
+
         return ack
 
     def _on_remote_close(self, rst: Packet) -> Packet:
@@ -239,8 +245,6 @@ class PipeSocket(object):
                 self._queue.append(await self._on_remote_open(packet))
             elif packet.is_reset:
                 self._queue.append(self._on_remote_close(packet))
-            elif not self._protocol.channel_exists(packet):
-                logging.warn('socket: dropped packet on unknown channel')
             elif packet.is_data:
                 self._on_data_received(packet)
             else:

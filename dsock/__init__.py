@@ -100,8 +100,8 @@ async def stream_channel_open(channel: SocketChannel) -> None:
         reader, writer = await asyncio.open_connection(
                 channel.address, channel.port, limit=buffer_size)
     except ConnectionError:
-        await channel.close()
-        return
+        logging.error(f'server: error connecting to {channel.address}:{channel.port}')
+        raise
 
     logging.info(f'server: connection established to {channel.address}:{channel.port}')
     channel.on_data_received = lambda x: stream_channel_data_received(x, writer)

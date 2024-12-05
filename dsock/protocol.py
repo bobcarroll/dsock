@@ -187,12 +187,23 @@ class PacketProtocol(object):
         logging.debug(f'protocol: ack channel {channel.number} open to '
                       f'{channel.address}:{channel.port}')
 
-        channel.state = Channel.STATE_OPEN
+        channel.state = Channel.STATE_OPENING
         channel.sequence = header.sequence
         header.sequence = channel.next_sequence()
         header.flags.ack = True
 
         return Packet(channel, packet.segment)
+
+    def channel_refused(self, packet: Packet) -> Packet:
+        """
+        Refuses channel setup and frees the channel number.
+        """
+        packet.channel.state = Channel.STATE_CLOSED
+        packet.segment.header.flags.rst = True
+        packet.segment.header.flags.ack = False
+
+        self.free_channel(packet.channel)
+        return packet
 
     def channel_reset(self, packet: Packet) -> Packet:
         """
@@ -254,8 +265,12 @@ class PacketProtocol(object):
         channel = self._channels.get(segment.header.channel)
 
         if channel and segment.header.flags.ack:
+            logging.debug(f'protocol: received ack {segment}')
             channel.sequence = segment.header.sequence
             channel.ready.set()
+            return None
+        elif not channel and not segment.header.flags.syn:
+            logging.warn('protocol: dropping segment on unknown channel')
             return None
 
         return Packet(channel, segment)
